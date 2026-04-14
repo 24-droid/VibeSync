@@ -157,4 +157,64 @@ Return ONLY a valid JSON array of objects (no markdown, no explanation) in this 
     }
 })
 
+// ── GET /api/recommendations/global-trending ───────────────────────────────
+router.get('/global-trending', authMiddleware, async (req, res) => {
+    try {
+        const cacheKey = 'global-trending-v4'
+        const cached = cache.get(cacheKey)
+        if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+            return res.json(cached.data)
+        }
+
+        const FEEDS = [
+            'https://itunes.apple.com/us/rss/topsongs/limit=15/json',
+            'https://itunes.apple.com/in/rss/topsongs/limit=15/json'
+        ]
+
+        const feedResponses = await Promise.all(FEEDS.map(url => axios.get(url).catch(() => null)))
+
+        const [usRes, inRes] = feedResponses
+        const usEntries = usRes?.data?.feed?.entry || []
+        const inEntries = inRes?.data?.feed?.entry || []
+
+        const interleaved = []
+        const maxLen = Math.max(usEntries.length, inEntries.length)
+        for (let i = 0; i < maxLen; i++) {
+            if (usEntries[i]) interleaved.push(usEntries[i])
+            if (inEntries[i]) interleaved.push(inEntries[i])
+        }
+
+        // De-duplicate by track ID and transform
+        const seenIds = new Set()
+        const tracks = interleaved
+            .map(entry => {
+                const trackId = entry.id?.attributes?.['im:id']
+                if (!trackId || seenIds.has(trackId)) return null
+                seenIds.add(trackId)
+
+                return {
+                    id: String(trackId),
+                    title: entry['im:name']?.label,
+                    artist: entry['im:artist']?.label,
+                    albumArt: entry['im:image']?.[2]?.label?.replace('170x170', '600x600') || null,
+                    previewUrl: entry.link?.[1]?.attributes?.href || null,
+                    youtubeUrl: `https://www.youtube.com/results?search_query=${encodeURIComponent(entry['im:artist']?.label + ' ' + entry['im:name']?.label + ' official audio')}`,
+                    isTrending: true,
+                }
+            })
+            .filter(t => t !== null)
+            .slice(0, 15)
+            .map((track, index) => ({
+                ...track,
+                score: 100 - (index * 2)
+            }))
+
+        cache.set(cacheKey, { data: tracks, timestamp: Date.now() })
+        res.json(tracks)
+    } catch (err) {
+        console.error('[global-trending]', err.message)
+        res.status(500).json({ message: 'Failed to fetch global trending from iTunes' })
+    }
+})
+
 module.exports = router

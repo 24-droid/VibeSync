@@ -1,21 +1,29 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import NavigationBar from '../components/NavigationBar'
 import SongCard from '../components/SongCard'
-import { TrendingUp, Flame } from 'lucide-react'
-
-const SONGS = [
-  { id: 1, title: 'Blinding Lights', artist: 'The Weeknd', mood: 'Energetic', confidence: 0.95, score: 98 },
-  { id: 2, title: 'As It Was', artist: 'Harry Styles', mood: 'Uplifting', confidence: 0.92, score: 96 },
-  { id: 3, title: 'Levitating', artist: 'Dua Lipa', mood: 'Happy', confidence: 0.94, score: 94 },
-  { id: 4, title: 'Good 4 U', artist: 'Olivia Rodrigo', mood: 'Melancholic', confidence: 0.91, score: 92 },
-  { id: 5, title: 'Flowers', artist: 'Miley Cyrus', mood: 'Empowering', confidence: 0.93, score: 90 },
-  { id: 6, title: 'Midnight Rain', artist: 'Taylor Swift', mood: 'Reflective', confidence: 0.89, score: 88 },
-]
+import { TrendingUp, Flame, Loader2, AlertCircle } from 'lucide-react'
+import api from '../api/api'
 
 const rankColors = ['from-yellow-400 to-orange-400', 'from-gray-300 to-gray-400', 'from-orange-500 to-amber-600']
 
 export default function TrendingPage() {
-  const [songs] = useState(SONGS)
+  const [songs, setSongs] = useState([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    const fetchTrending = async () => {
+      try {
+        const { data } = await api.get('/recommendations/global-trending')
+        setSongs(data)
+      } catch (err) {
+        setError('Failed to load trending songs')
+      } finally {
+        setIsLoading(false)
+      }
+    }
+    fetchTrending()
+  }, [])
 
   return (
     <div className="min-h-screen bg-[#070711] font-sans">
@@ -48,7 +56,17 @@ export default function TrendingPage() {
 
         {/* Song list */}
         <div className="flex flex-col gap-3" style={{ animation: 'fadeSlideUp 0.6s 0.1s ease both' }}>
-          {songs.map((song, i) => (
+          {isLoading ? (
+            <div className="flex flex-col items-center justify-center py-24 text-white/20">
+              <Loader2 className="w-8 h-8 animate-spin mb-4" />
+              <p>Fetching global trends...</p>
+            </div>
+          ) : error ? (
+            <div className="flex items-center gap-3 px-4 py-3 rounded-xl border border-red-500/25 bg-red-500/10 text-red-300 text-sm">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              {error}
+            </div>
+          ) : songs.map((song, i) => (
             <div key={song.id} className="flex items-center gap-4">
               {/* Rank badge */}
               <div className={`shrink-0 w-10 h-10 rounded-xl flex items-center justify-center text-sm font-black text-white bg-gradient-to-br ${rankColors[i] || 'from-indigo-500/40 to-purple-500/40'}`}
@@ -56,7 +74,7 @@ export default function TrendingPage() {
                 {i + 1}
               </div>
               <div className="flex-1">
-                <SongCard song={song} onAddToCollection={() => alert(`Added ${song.title}`)} />
+                <SongCard song={song} />
               </div>
               {/* Trending score */}
               <div className="shrink-0 text-right hidden sm:block">

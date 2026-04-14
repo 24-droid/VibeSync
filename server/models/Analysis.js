@@ -18,6 +18,17 @@ const analysisSchema = new mongoose.Schema(
         },
         colors: [String],
         description: String,
+        imageUrl: String,
+        songs: [
+            {
+                id: String,
+                title: String,
+                artist: String,
+                albumArt: String,
+                previewUrl: String,
+                youtubeUrl: String
+            }
+        ]
     },
     { timestamps: true }
 )

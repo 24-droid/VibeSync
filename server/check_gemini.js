@@ -4,7 +4,7 @@ require('dotenv').config();
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 async function check() {
-    const models = ['gemini-2.0-flash', 'gemini-1.5-flash'];
+    const models = ['gemini-2.0-flash', 'gemini-2.5-flash-lite'];
     for (const m of models) {
         try {
             console.log(`Testing ${m}...`);

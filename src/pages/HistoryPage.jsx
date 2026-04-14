@@ -1,15 +1,37 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import NavigationBar from '../components/NavigationBar'
 import HistoryCard from '../components/HistoryCard'
-import { History } from 'lucide-react'
+import { History, Loader2, AlertCircle } from 'lucide-react'
+import api from '../api/api'
 
 export default function HistoryPage() {
-  const [history] = useState([
-    { id: 1, mood: 'Energetic', confidence: 0.92, songCount: 3, createdAt: new Date(Date.now() - 86400000) },
-    { id: 2, mood: 'Calm', confidence: 0.88, songCount: 5, createdAt: new Date(Date.now() - 172800000) },
-    { id: 3, mood: 'Melancholic', confidence: 0.85, songCount: 4, createdAt: new Date(Date.now() - 259200000) },
-    { id: 4, mood: 'Happy', confidence: 0.90, songCount: 6, createdAt: new Date(Date.now() - 345600000) },
-  ])
+  const [history, setHistory] = useState([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    const fetchHistory = async () => {
+      try {
+        const { data } = await api.get('/history')
+        setHistory(data)
+      } catch (err) {
+        setError('Failed to load history')
+      } finally {
+        setIsLoading(false)
+      }
+    }
+    fetchHistory()
+  }, [])
+
+  const handleDelete = async (id) => {
+    if (!confirm('Are you sure you want to delete this history entry?')) return
+    try {
+      await api.delete(`/history/${id}`)
+      setHistory(prev => prev.filter(item => item._id !== id))
+    } catch (err) {
+      alert('Failed to delete history entry')
+    }
+  }
 
   return (
     <div className="min-h-screen bg-[#070711] font-sans">
@@ -29,10 +51,20 @@ export default function HistoryPage() {
           <p className="text-white/40">Browse your past mood detections and recommendations</p>
         </div>
 
-        {history.length > 0 ? (
+        {isLoading ? (
+          <div className="flex flex-col items-center justify-center py-24 text-white/20">
+            <Loader2 className="w-8 h-8 animate-spin mb-4" />
+            <p>Loading your history...</p>
+          </div>
+        ) : error ? (
+          <div className="flex items-center gap-3 px-4 py-3 rounded-xl border border-red-500/25 bg-red-500/10 text-red-300 text-sm">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            {error}
+          </div>
+        ) : history.length > 0 ? (
           <div className="flex flex-col gap-3" style={{ animation: 'fadeSlideUp 0.6s 0.1s ease both' }}>
             {history.map(item => (
-              <HistoryCard key={item.id} item={item} onDelete={(id) => { if (confirm('Delete this entry?')) alert(`Deleted ${id}`) }} />
+              <HistoryCard key={item._id} item={item} onDelete={handleDelete} />
             ))}
           </div>
         ) : (

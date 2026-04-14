@@ -5,9 +5,26 @@ const { GoogleGenerativeAI } = require('@google/generative-ai')
 const authMiddleware = require('../middleware/auth')
 const Analysis = require('../models/Analysis')
 
-// ── Multer: memory storage (no disk writes) ───────────────────────────────
+const fs = require('fs')
+const path = require('path')
+
+// ── Multer: disk storage ───────────────────────────────
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        const uploadDir = 'public/uploads'
+        if (!fs.existsSync(uploadDir)) {
+            fs.mkdirSync(uploadDir, { recursive: true })
+        }
+        cb(null, uploadDir)
+    },
+    filename: (req, file, cb) => {
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9)
+        cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname))
+    }
+})
+
 const upload = multer({
-    storage: multer.memoryStorage(),
+    storage,
     limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
     fileFilter: (req, file, cb) => {
         if (file.mimetype.startsWith('image/')) cb(null, true)
@@ -29,11 +46,12 @@ router.post('/mood', authMiddleware, upload.single('image'), async (req, res) =>
             return res.status(500).json({ message: 'Gemini API key not configured' })
         }
 
-        // Convert buffer to base64
-        const base64Image = req.file.buffer.toString('base64')
+        // Convert file on disk to base64 for Gemini
+        const filePath = req.file.path
+        const imageBuffer = fs.readFileSync(filePath)
+        const base64Image = imageBuffer.toString('base64')
         const mimeType = req.file.mimetype
 
-        // Using gemini-2.0-flash (confirmed available for this project)
         const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' })
 
         const prompt = `Analyze this image and determine the emotional mood it conveys.
@@ -56,16 +74,10 @@ Return ONLY a valid JSON object (no markdown, no explanation) in exactly this fo
         ])
 
         const text = result.response.text().trim()
-
-        // Strip markdown code blocks if Gemini wraps it
         const jsonText = text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()
         const parsed = JSON.parse(jsonText)
 
-        // Validate required fields
         const { mood, confidence, colors, description } = parsed
-        if (!mood || confidence === undefined || !colors) {
-            throw new Error('Incomplete response from AI')
-        }
 
         // Save to database for history
         const analysis = await Analysis.create({
@@ -74,6 +86,8 @@ Return ONLY a valid JSON object (no markdown, no explanation) in exactly this fo
             confidence: Math.min(1, Math.max(0, confidence)),
             colors: colors.slice(0, 5),
             description,
+            imageUrl: `/uploads/${req.file.filename}`,
+            songs: []
         })
 
         res.json({
@@ -82,18 +96,27 @@ Return ONLY a valid JSON object (no markdown, no explanation) in exactly this fo
             confidence: analysis.confidence,
             colors: analysis.colors,
             description: analysis.description,
+            imageUrl: analysis.imageUrl
         })
     } catch (err) {
         console.error('[analysis/mood]', err.message)
+        res.status(500).json({ message: err.message || 'Analysis failed' })
+    }
+})
 
-        if (err instanceof SyntaxError) {
-            return res.status(500).json({ message: 'Failed to parse AI response. Please try again.' })
-        }
-        if (err.message?.includes('API_KEY')) {
-            return res.status(500).json({ message: 'Invalid Gemini API key. Check server/.env' })
-        }
-
-        res.status(500).json({ message: err.message || 'Analysis failed. Please try again.' })
+// ── PATCH /api/analysis/:id/songs (Update history with recommendations) ──────
+router.patch('/:id/songs', authMiddleware, async (req, res) => {
+    try {
+        const { songs } = req.body
+        const analysis = await Analysis.findOneAndUpdate(
+            { _id: req.params.id, userId: req.user._id },
+            { $set: { songs: songs || [] } },
+            { new: true }
+        )
+        if (!analysis) return res.status(404).json({ message: 'Analysis not found' })
+        res.json(analysis)
+    } catch (err) {
+        res.status(500).json({ message: 'Failed to update history songs' })
     }
 })
 
@@ -108,5 +131,7 @@ router.get('/history', authMiddleware, async (req, res) => {
         res.status(500).json({ message: 'Failed to fetch history' })
     }
 })
+
+module.exports = router
 
 module.exports = router

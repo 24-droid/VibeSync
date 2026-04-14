@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 
 export default function CollectionCard({ collection }) {
   return (
-    <Link to={`/collections/${collection.id}`} className="block">
+    <Link to={`/collections/${collection._id}`} className="block">
       <div className="glass-card rounded-2xl p-6 h-full group cursor-pointer hover:border-indigo-500/40 transition-all duration-300">
         <div className="flex items-start justify-between mb-5">
           <div
@@ -13,7 +13,7 @@ export default function CollectionCard({ collection }) {
             <FolderHeart className="w-6 h-6 text-indigo-400" />
           </div>
           <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-pink-500/10 text-pink-300 border border-pink-500/20">
-            {collection.songCount || 0} songs
+            {collection.songs?.length || 0} songs
           </span>
         </div>
 

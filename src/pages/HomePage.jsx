@@ -62,7 +62,15 @@ export default function HomePage() {
       setIsAnalyzing(false)
 
       // Step 2 — recommendations for detected mood
-      await fetchRecommendations(data.mood, 0)
+      const { data: recData } = await api.get(`/recommendations?mood=${data.mood}&limit=9&offset=0&lang=${lang}`)
+      setRecommendations(recData.tracks || [])
+      setHasMore(recData.hasMore || false)
+      setOffset(0)
+
+      // Step 3 — Update history entry with initial recommendations
+      if (data.id) {
+        await api.patch(`/analysis/${data.id}/songs`, { songs: recData.tracks || [] })
+      }
     } catch (err) {
       setError(err.response?.data?.message || 'Analysis failed. Please try again.')
       setIsAnalyzing(false)
@@ -192,7 +200,7 @@ export default function HomePage() {
             ) : (
               <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {recommendations.map(song => (
-                  <SongCard key={song.id} song={song} onAddToCollection={() => alert(`Added ${song.title}`)} />
+                  <SongCard key={song.id} song={song} />
                 ))}
               </div>
             )}

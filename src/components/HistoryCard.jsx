@@ -11,12 +11,13 @@ const moodColors = {
 
 export default function HistoryCard({ item, onDelete }) {
   const colors = moodColors[item.mood?.toLowerCase()] || { bg: 'bg-indigo-500/15', text: 'text-indigo-300', border: 'border-indigo-500/20', dot: 'bg-indigo-400' }
+  const serverBase = 'http://localhost:5000'
 
   return (
     <div className="glass-card rounded-2xl p-5 flex gap-4 items-center group">
       {/* Mood thumbnail / image */}
       {item.imageUrl ? (
-        <img src={item.imageUrl} alt="Upload" className="w-16 h-16 rounded-xl object-cover shrink-0" />
+        <img src={`${serverBase}${item.imageUrl}`} alt="Upload" className="w-16 h-16 rounded-xl object-cover shrink-0" />
       ) : (
         <div
           className="w-16 h-16 rounded-xl flex items-center justify-center shrink-0"
@@ -36,7 +37,7 @@ export default function HistoryCard({ item, onDelete }) {
             <span className="text-white/30 text-xs">{Math.round(item.confidence * 100)}% match</span>
           )}
         </div>
-        <p className="text-white/45 text-sm">{item.songCount || 0} song recommendations</p>
+        <p className="text-white/45 text-sm">{item.songs?.length || 0} song recommendations</p>
         <div className="flex items-center gap-1.5 mt-2 text-white/25 text-xs">
           <Calendar className="w-3 h-3" />
           {new Date(item.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
@@ -45,7 +46,7 @@ export default function HistoryCard({ item, onDelete }) {
 
       {onDelete && (
         <button
-          onClick={() => onDelete(item.id)}
+          onClick={() => onDelete(item._id)}
           className="p-2.5 rounded-xl text-white/20 hover:text-red-400 hover:bg-red-500/10 transition-all shrink-0 opacity-0 group-hover:opacity-100"
         >
           <Trash2 className="w-4 h-4" />
