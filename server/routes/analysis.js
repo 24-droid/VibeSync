@@ -33,23 +33,17 @@ router.post('/mood', authMiddleware, upload.single('image'), async (req, res) =>
         const base64Image = req.file.buffer.toString('base64')
         const mimeType = req.file.mimetype
 
+        // Using gemini-2.0-flash (confirmed available for this project)
         const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' })
 
         const prompt = `Analyze this image and determine the emotional mood it conveys.
-
 Return ONLY a valid JSON object (no markdown, no explanation) in exactly this format:
 {
   "mood": "one of: Happy, Sad, Energetic, Calm, Melancholic, Romantic, Peaceful, Angry, Nostalgic, Mysterious",
-  "confidence": 0.0 to 1.0,
+  "confidence": 0.9,
   "colors": ["#hex1", "#hex2", "#hex3", "#hex4", "#hex5"],
   "description": "one sentence describing the emotional atmosphere of this image"
-}
-
-Rules:
-- mood must be exactly one of the listed options
-- colors should be 5 dominant hex color codes from the image
-- confidence should reflect how clearly the mood is conveyed
-- description should be evocative and music-relevant`
+}`
 
         const result = await model.generateContent([
             prompt,
@@ -70,7 +64,7 @@ Rules:
         // Validate required fields
         const { mood, confidence, colors, description } = parsed
         if (!mood || confidence === undefined || !colors) {
-            throw new Error('Incomplete response from Gemini')
+            throw new Error('Incomplete response from AI')
         }
 
         // Save to database for history

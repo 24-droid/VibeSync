@@ -61,29 +61,36 @@ export default function SongCard({ song, onAddToCollection, onRemove }) {
       <div className="flex-1 min-w-0">
         <h3 className="font-semibold text-white text-sm truncate">{song.title}</h3>
         <p className="text-white/40 text-xs truncate mt-0.5">{song.artist}</p>
-        {song.mood && (
-          <div className="flex gap-2 mt-2">
+        <div className="flex flex-wrap gap-2 mt-2">
+          {song.isTrending && (
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
+              🔥 Trending
+            </span>
+          )}
+          {song.mood && (
             <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-500/15 text-indigo-300 border border-indigo-500/20">
               {song.mood}
             </span>
-            {song.confidence && (
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-pink-500/15 text-pink-300 border border-pink-500/20">
-                {Math.round(song.confidence * 100)}%
-              </span>
-            )}
-          </div>
-        )}
-        {!song.previewUrl && song.spotifyUrl && (
-          <p className="text-white/20 text-[10px] mt-1">No preview · open in Spotify</p>
+          )}
+        </div>
+        {!song.previewUrl && (
+          <p className="text-white/20 text-[10px] mt-1 italic">Preview unavailable</p>
         )}
       </div>
 
       {/* Actions */}
       <div className="flex gap-1 shrink-0">
-        {song.spotifyUrl && (
-          <a href={song.spotifyUrl} target="_blank" rel="noopener noreferrer"
-            className="p-2 rounded-xl text-white/30 hover:text-green-400 hover:bg-green-500/10 transition-all"
-            title="Open on JioSaavn" onClick={e => e.stopPropagation()}>
+        {song.youtubeUrl && (
+          <a href={song.youtubeUrl} target="_blank" rel="noopener noreferrer"
+            className="p-2 rounded-xl text-white/30 hover:text-red-400 hover:bg-red-500/10 transition-all"
+            title="Play Full Song on YouTube" onClick={e => e.stopPropagation()}>
+            <Play className="w-4 h-4" />
+          </a>
+        )}
+        {(song.externalUrl || song.spotifyUrl) && (
+          <a href={song.externalUrl || song.spotifyUrl} target="_blank" rel="noopener noreferrer"
+            className="p-2 rounded-xl text-white/30 hover:text-indigo-400 hover:bg-indigo-500/10 transition-all"
+            title="Open original link" onClick={e => e.stopPropagation()}>
             <ExternalLink className="w-4 h-4" />
           </a>
         )}
