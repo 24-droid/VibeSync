@@ -17,6 +17,12 @@ export default function HomePage() {
   const [hasMore, setHasMore] = useState(false)
   const [currentMood, setCurrentMood] = useState(null)
   const [lang, setLang] = useState('english')
+  
+  // Custom prompt states
+  const [customPrompt, setCustomPrompt] = useState('')
+  const [isRefining, setIsRefining] = useState(false)
+  const [activePrompt, setActivePrompt] = useState('')
+  const [hasAnalyzed, setHasAnalyzed] = useState(false)
 
   const LANGUAGES = [
     { key: 'english', label: '🇺🇸 English' },
@@ -24,12 +30,14 @@ export default function HomePage() {
     { key: 'punjabi', label: '🎵 Punjabi' },
   ]
 
-  const fetchRecommendations = async (mood, newOffset, language) => {
+  const fetchRecommendations = async (mood, newOffset, language, promptOverride) => {
     setLoadingTracks(true)
     setTracksError(null)
     try {
       const useLang = language || lang
-      const { data: recData } = await api.get(`/recommendations?mood=${mood}&limit=9&offset=${newOffset}&lang=${useLang}`)
+      const promptToUse = typeof promptOverride !== 'undefined' ? promptOverride : activePrompt
+      const promptParam = promptToUse ? `&prompt=${encodeURIComponent(promptToUse)}` : ''
+      const { data: recData } = await api.get(`/recommendations?mood=${mood}&limit=12&offset=${newOffset}&lang=${useLang}${promptParam}`)
       setRecommendations(recData.tracks || [])
       setHasMore(recData.hasMore || false)
       setOffset(newOffset)
@@ -49,6 +57,9 @@ export default function HomePage() {
     setOffset(0)
     setHasMore(false)
     setCurrentMood(null)
+    setCustomPrompt('')
+    setActivePrompt('')
+    setHasAnalyzed(false)
 
     try {
       // Step 1 — Gemini mood analysis
@@ -60,6 +71,7 @@ export default function HomePage() {
       setAnalysisResult(data)
       setCurrentMood(data.mood)
       setIsAnalyzing(false)
+      setHasAnalyzed(true)
 
       // Step 2 — recommendations for detected mood
       const { data: recData } = await api.get(`/recommendations?mood=${data.mood}&limit=9&offset=0&lang=${lang}`)
@@ -74,6 +86,30 @@ export default function HomePage() {
     } catch (err) {
       setError(err.response?.data?.message || 'Analysis failed. Please try again.')
       setIsAnalyzing(false)
+    }
+  }
+
+  const handleRefineVibe = async (e) => {
+    e.preventDefault()
+    if (!customPrompt.trim() || !analysisResult?.id) return
+
+    setIsRefining(true)
+    setTracksError(null)
+    try {
+      const { data } = await api.post(`/analysis/${analysisResult.id}/refine`, {
+        prompt: customPrompt,
+        lang: lang
+      })
+      setAnalysisResult(data)
+      setCurrentMood(data.mood)
+      setRecommendations(data.tracks || [])
+      setOffset(0)
+      setHasMore((data.tracks || []).length > 9)
+      setActivePrompt(customPrompt)
+    } catch (err) {
+      setError(err.response?.data?.message || 'Refinement failed. Please try again.')
+    } finally {
+      setIsRefining(false)
     }
   }
 
@@ -118,11 +154,53 @@ export default function HomePage() {
           <ImageUpload onUpload={handleImageUpload} isLoading={isAnalyzing} />
 
           {analysisResult ? (
-            <MoodIndicator
-              mood={analysisResult.mood}
-              confidence={analysisResult.confidence}
-              description={analysisResult.description}
-            />
+            <div className="flex flex-col gap-6">
+              <MoodIndicator
+                mood={analysisResult.mood}
+                confidence={analysisResult.confidence}
+                description={analysisResult.description}
+              />
+              <div className="glass-card rounded-2xl p-6 relative overflow-hidden"
+                style={{ animation: 'fadeSlideUp 0.4s ease both' }}>
+                <div className="absolute inset-0 pointer-events-none z-0"
+                  style={{ background: 'radial-gradient(circle at 10% 20%, rgba(99,102,241,0.06) 0%, transparent 60%)' }} />
+                
+                <div className="relative z-10">
+                  <h4 className="text-white text-sm font-black mb-1.5 flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-indigo-400 animate-pulse" />
+                    Not quite your vibe? Custom Refine
+                  </h4>
+                  <p className="text-white/45 text-xs mb-4 leading-relaxed">
+                    Specify who you're with or what you're doing in the picture, and get customized recommendations!
+                  </p>
+                  
+                  <form onSubmit={handleRefineVibe} className="flex gap-2">
+                    <input
+                      type="text"
+                      value={customPrompt}
+                      onChange={(e) => setCustomPrompt(e.target.value)}
+                      placeholder="✨ E.g. 'Late night drive with friends, play some energetic Punjabi pop'"
+                      disabled={isRefining}
+                      className="flex-1 px-4 py-3 rounded-xl bg-white/[0.04] border border-white/[0.07] text-white placeholder-white/20 text-sm focus:outline-none focus:border-indigo-500/40 focus:bg-white/[0.07] transition-all"
+                    />
+                    <button
+                      type="submit"
+                      disabled={isRefining || !customPrompt.trim()}
+                      className="px-5 py-3 rounded-xl bg-indigo-500 hover:bg-indigo-600 disabled:bg-white/[0.04] disabled:text-white/20 text-white font-bold text-sm transition-all shadow-[0_0_15px_rgba(99,102,241,0.25)] hover:shadow-[0_0_20px_rgba(99,102,241,0.45)] flex items-center gap-2 cursor-pointer disabled:cursor-not-allowed"
+                    >
+                      {isRefining ? (
+                        <div className="w-4 h-4 rounded-full border-2 border-white/20 border-t-white animate-spin" />
+                      ) : (
+                        <>
+                          <span>Refine</span>
+                          <Sparkles className="w-3.5 h-3.5" />
+                        </>
+                      )}
+                    </button>
+                  </form>
+                </div>
+              </div>
+            </div>
           ) : (
             <div className="glass-card rounded-2xl flex flex-col items-center justify-center py-16 text-center">
               {isAnalyzing ? (
@@ -142,7 +220,7 @@ export default function HomePage() {
         </div>
 
         {/* Recommendations */}
-        {(recommendations.length > 0 || loadingTracks || tracksError) && (
+        {(hasAnalyzed || loadingTracks || tracksError) && (
           <div style={{ animation: 'fadeSlideUp 0.5s ease both' }}>
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
               <div className="flex items-center gap-3">
@@ -165,7 +243,8 @@ export default function HomePage() {
                     onClick={() => {
                       setLang(l.key)
                       setOffset(0)
-                      fetchRecommendations(currentMood, 0, l.key)
+                      // Pass activePrompt explicitly so React state closure issue doesn't cause mixing
+                      fetchRecommendations(currentMood, 0, l.key, activePrompt)
                     }}
                     disabled={loadingTracks}
                     className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${lang === l.key

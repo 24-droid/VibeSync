@@ -9,7 +9,7 @@ const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
 
 // Simple in-memory cache
 const cache = new Map()
-const CACHE_TTL = 5 * 60 * 1000 // 5 minutes
+const CACHE_TTL = 15 * 60 * 1000 // 15 minutes
 
 // Helper: Fisher-Yates Shuffle
 function shuffleArray(array) {
@@ -25,11 +25,14 @@ router.get('/', authMiddleware, async (req, res) => {
     try {
         const moodKey = (req.query.mood || 'energetic').toLowerCase()
         const lang = (req.query.lang || 'english').toLowerCase()
-        const limit = Math.min(parseInt(req.query.limit) || 9, 20)
+        const limit = Math.min(parseInt(req.query.limit) || 12, 30)
         const offset = Math.max(parseInt(req.query.offset) || 0, 0)
+        const promptOverride = req.query.prompt
 
         // Check cache
-        const cacheKey = `${moodKey}-${lang}`
+        const cacheKey = promptOverride 
+            ? `${moodKey}-${lang}-${promptOverride.toLowerCase()}` 
+            : `${moodKey}-${lang}`
         const cached = cache.get(cacheKey)
         if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
             const tracks = cached.data.slice(offset, offset + limit)
@@ -56,17 +59,17 @@ router.get('/', authMiddleware, async (req, res) => {
         const moodInstruction = moodProfiles[moodKey] || "Match the general vibe of the mood."
 
         // Step 1: Use Groq to curate TRENDING song names with rich metadata
-        const curationPrompt = `Act as a world-class music curator and trend analyst in April 2026.
-Recommend 30 currently trending hit songs for a "${moodKey}" mood in "${lang}" language.
-
-Musical Fingerprint for "${moodKey}": ${moodInstruction}
+        let curationPrompt
+        if (promptOverride) {
+            curationPrompt = `Act as a world-class music curator and trend analyst in April 2026.
+Recommend exactly 50 currently trending hit songs based on the user's specific request: "${promptOverride}".
+The original detected visual vibe of the image was: "${moodKey}". Blend this context if relevant, but prioritize the user's request.
+Target Language: "${lang}"
 
 Requirements:
 - It is currently early 2026. Prioritize massive hits from 2025 and new 2026 releases.
 - ENSURE VAST DIVERSITY: Return a mix of global chart-toppers, rising viral stars, and critically acclaimed deep cuts. DO NOT return only the same top 5 artists.
-- For Hindi: Include latest Bollywood, Indie-Pop, and viral T-Series releases.
-- For Punjabi: Include latest from Diljit, Karan Aujla, Shubh, AP Dhillon, etc.
-- For English: Billboard Top 100, TikTok virals, and fresh streaming hits.
+- STRICT LANGUAGE ENFORCEMENT: Recommend ONLY songs in the "${lang}" language. DO NOT mix languages. If the language is "hindi", recommend exclusively Hindi songs (no English, no pure Punjabi). If the language is "punjabi", recommend exclusively Punjabi songs. If the language is "english", recommend exclusively English songs.
 
 Return ONLY a valid JSON array of objects (no markdown, no explanation) in this format:
 [
@@ -77,11 +80,33 @@ Return ONLY a valid JSON array of objects (no markdown, no explanation) in this 
     "itunesQuery": "Optimized search query for iTunes API" 
   }
 ]`
+        } else {
+            curationPrompt = `Act as a world-class music curator and trend analyst in April 2026.
+Recommend exactly 50 currently trending hit songs for a "${moodKey}" mood in "${lang}" language.
+
+Musical Fingerprint for "${moodKey}": ${moodInstruction}
+
+Requirements:
+- It is currently early 2026. Prioritize massive hits from 2025 and new 2026 releases.
+- ENSURE VAST DIVERSITY: Return a mix of global chart-toppers, rising viral stars, and critically acclaimed deep cuts. DO NOT return only the same top 5 artists.
+- STRICT LANGUAGE ENFORCEMENT: Recommend ONLY songs in the "${lang}" language. DO NOT mix languages. If the language is "hindi", recommend exclusively Hindi songs (no English, no pure Punjabi). If the language is "punjabi", recommend exclusively Punjabi songs. If the language is "english", recommend exclusively English songs.
+
+Return ONLY a valid JSON array of objects (no markdown, no explanation) in this format:
+[
+  { 
+    "title": "Song Title", 
+    "artist": "Artist Name", 
+    "album": "Album Name (if applicable)", 
+    "itunesQuery": "Optimized search query for iTunes API" 
+  }
+]`
+        }
 
         const chatCompletion = await groq.chat.completions.create({
             messages: [{ role: 'user', content: curationPrompt }],
             model: 'llama-3.3-70b-versatile',
-            temperature: 1.0, // Maximum variety
+            temperature: 0.85,
+            max_tokens: 8000,
         })
 
         const text = chatCompletion.choices[0].message.content.trim()
@@ -92,43 +117,87 @@ Return ONLY a valid JSON array of objects (no markdown, no explanation) in this 
         trendingList = shuffleArray(trendingList)
 
         // Step 2: Fetch metadata with smart fallback
+        // For Hindi/Punjabi: search IN store with broader queries since iTunes catalog is thin
         const country = lang === 'english' ? 'US' : 'IN'
+        const isIndian = lang === 'hindi' || lang === 'punjabi'
+        
+        // Language-specific YouTube suffix for better search results
+        const ytSuffix = {
+            english: 'official music video',
+            hindi: 'official video',
+            punjabi: 'official video'
+        }[lang] || 'official audio'
+
+        const fetchTrackMetadata = async (item) => {
+            // Build multiple query strategies, try each in order
+            const queries = [
+                item.itunesQuery,
+                `${item.artist} ${item.title}`,
+                item.title,
+            ].filter(Boolean)
+
+            for (const query of queries) {
+                try {
+                    const { data } = await axios.get('https://itunes.apple.com/search', {
+                        params: {
+                            term: query,
+                            entity: 'song',
+                            limit: isIndian ? 3 : 1, // fetch 3 results for Indian to pick best match
+                            media: 'music',
+                            country,
+                            ...(isIndian && { lang: lang === 'hindi' ? 'hi' : 'pa' })
+                        },
+                        timeout: 5000,
+                    })
+
+                    if (data.results && data.results.length > 0) {
+                        // For Indian languages, prefer result whose artist name most closely matches
+                        let t = data.results[0]
+                        if (isIndian && data.results.length > 1) {
+                            const artistLower = item.artist.toLowerCase()
+                            const better = data.results.find(r =>
+                                r.artistName?.toLowerCase().includes(artistLower.split(' ')[0]) ||
+                                artistLower.includes(r.artistName?.toLowerCase().split(' ')[0])
+                            )
+                            if (better) t = better
+                        }
+
+                        return {
+                            id: String(t.trackId),
+                            title: t.trackName || item.title,
+                            artist: t.artistName || item.artist,
+                            album: t.collectionName || item.album || '',
+                            albumArt: t.artworkUrl100?.replace('100x100', '600x600') || null,
+                            previewUrl: t.previewUrl || null,
+                            externalUrl: t.trackViewUrl || null,
+                            youtubeUrl: `https://www.youtube.com/results?search_query=${encodeURIComponent(item.artist + ' ' + item.title + ' ' + ytSuffix)}`,
+                            duration: t.trackTimeMillis || 0,
+                            isTrending: true,
+                            mood: moodKey
+                        }
+                    }
+                } catch (_) {
+                    // Try next query strategy
+                }
+            }
+            return null // All queries failed
+        }
+
         const trackPromises = trendingList.map(async (item) => {
             try {
-                // Primary search using rich query
-                const query = item.itunesQuery || `${item.artist} ${item.title}`
-                const { data } = await axios.get('https://itunes.apple.com/search', {
-                    params: { term: query, entity: 'song', limit: 1, media: 'music', country },
-                    timeout: 4000,
-                })
+                const result = await fetchTrackMetadata(item)
+                if (result) return result
 
-                if (data.results && data.results.length > 0) {
-                    const t = data.results[0]
-                    return {
-                        id: String(t.trackId),
-                        title: t.trackName,
-                        artist: t.artistName,
-                        album: t.collectionName || item.album || '',
-                        albumArt: t.artworkUrl100?.replace('100x100', '600x600') || null,
-                        previewUrl: t.previewUrl || null,
-                        externalUrl: t.trackViewUrl || null,
-                        youtubeUrl: `https://www.youtube.com/results?search_query=${encodeURIComponent(t.artistName + ' ' + t.trackName + ' official audio')}`,
-                        duration: t.trackTimeMillis || 0,
-                        isTrending: true,
-                        mood: moodKey
-                    }
-                }
-
-                // Fallback: Use Groq metadata if iTunes fails
+                // Final fallback: use Groq AI metadata with a correct YouTube link
                 return {
-                    id: `ai-${Buffer.from(item.title).toString('hex').slice(0, 8)}`,
+                    id: `ai-${Buffer.from(item.title + item.artist).toString('hex').slice(0, 10)}`,
                     title: item.title,
                     artist: item.artist,
                     album: item.album || '',
                     albumArt: null,
                     previewUrl: null,
                     externalUrl: null,
-                    youtubeUrl: `https://www.youtube.com/results?search_query=${encodeURIComponent(item.artist + ' ' + item.title + (lang === 'english' ? ' official video' : ' official audio'))}`,
+                    youtubeUrl: `https://www.youtube.com/results?search_query=${encodeURIComponent(item.artist + ' ' + item.title + ' ' + ytSuffix)}`,
                     duration: 0,
                     isTrending: true,
                     mood: moodKey
@@ -139,6 +208,7 @@ Return ONLY a valid JSON array of objects (no markdown, no explanation) in this 
         })
 
         const allTracks = (await Promise.all(trackPromises)).filter(t => t !== null)
+
 
         // Save to cache
         cache.set(cacheKey, { data: allTracks, timestamp: Date.now() })
