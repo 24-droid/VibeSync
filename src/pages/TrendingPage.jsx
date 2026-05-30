@@ -37,7 +37,7 @@ export default function TrendingPage() {
 
       <NavigationBar />
 
-      <main className="relative z-10 max-w-4xl mx-auto px-6 py-10">
+      <main className="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
         {/* Header */}
         <div className="mb-10" style={{ animation: 'fadeSlideUp 0.6s ease both' }}>
           <div className="inline-flex items-center gap-2 mb-4 px-3 py-1.5 rounded-full border"
@@ -67,13 +67,13 @@ export default function TrendingPage() {
               {error}
             </div>
           ) : songs.map((song, i) => (
-            <div key={song.id} className="flex items-center gap-4">
+            <div key={song.id} className="flex items-center gap-2 sm:gap-4">
               {/* Rank badge */}
-              <div className={`shrink-0 w-10 h-10 rounded-xl flex items-center justify-center text-sm font-black text-white bg-gradient-to-br ${rankColors[i] || 'from-indigo-500/40 to-purple-500/40'}`}
+              <div className={`shrink-0 w-8 h-8 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center text-xs sm:text-sm font-black text-white bg-gradient-to-br ${rankColors[i] || 'from-indigo-500/40 to-purple-500/40'}`}
                 style={i >= 3 ? { background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.3)' } : {}}>
                 {i + 1}
               </div>
-              <div className="flex-1">
+              <div className="flex-1 min-w-0">
                 <SongCard song={song} />
               </div>
               {/* Trending score */}

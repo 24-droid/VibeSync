@@ -72,15 +72,15 @@ export default function SongCard({ song, onRemove }) {
   const handleAudioEnd = () => setIsPlaying(false)
 
   return (
-    <div className="glass-card rounded-2xl p-4 flex gap-4 items-center group relative">
+    <div className="glass-card rounded-2xl p-3 sm:p-4 flex gap-3 sm:gap-4 items-center group relative">
       {/* Album art / play button */}
-      <div className="relative w-14 h-14 rounded-xl overflow-hidden shrink-0 cursor-pointer" onClick={togglePlay}>
+      <div className="relative w-12 h-12 sm:w-14 sm:h-14 rounded-xl overflow-hidden shrink-0 cursor-pointer" onClick={togglePlay}>
         {song.albumArt ? (
           <img src={song.albumArt} alt={song.album || song.title} className="w-full h-full object-cover" />
         ) : (
           <div className="w-full h-full flex items-center justify-center"
             style={{ background: 'linear-gradient(135deg,rgba(99,102,241,0.3),rgba(236,72,153,0.3))' }}>
-            <Music className="w-6 h-6 text-indigo-400" />
+            <Music className="w-5 h-5 sm:w-6 sm:h-6 text-indigo-400" />
           </div>
         )}
 
@@ -88,8 +88,8 @@ export default function SongCard({ song, onRemove }) {
           <div className={`absolute inset-0 flex items-center justify-center rounded-xl transition-all duration-200 ${isPlaying ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
             style={{ background: 'rgba(0,0,0,0.55)' }}>
             {isPlaying
-              ? <Pause className="w-5 h-5 text-white" />
-              : <Play className="w-5 h-5 text-white" />
+              ? <Pause className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+              : <Play className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
             }
           </div>
         )}
@@ -108,19 +108,20 @@ export default function SongCard({ song, onRemove }) {
       <div className="flex-1 min-w-0">
         <h3 className="font-semibold text-white text-sm truncate">{song.title}</h3>
         <p className="text-white/40 text-xs truncate mt-0.5">{song.artist}</p>
-        <div className="flex flex-wrap gap-2 mt-2">
+        <div className="flex flex-wrap gap-1.5 sm:gap-2 mt-1.5 sm:mt-2">
           {song.isTrending && (
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
+            <span className="px-1.5 sm:px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
               🔥 Trending
             </span>
           )}
           {song.mood && (
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-500/15 text-indigo-300 border border-indigo-500/20">
+            <span className="px-1.5 sm:px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-semibold bg-indigo-500/15 text-indigo-300 border border-indigo-500/20">
               {song.mood}
             </span>
           )}
         </div>
       </div>
+
 
       {/* Actions */}
       <div className="flex gap-1 shrink-0 items-center relative">
