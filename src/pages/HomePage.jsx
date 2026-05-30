@@ -126,7 +126,7 @@ export default function HomePage() {
 
       <NavigationBar />
 
-      <main className="relative z-10 max-w-7xl mx-auto px-6 py-10">
+      <main className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
         {/* Header */}
         <div className="mb-10" style={{ animation: 'fadeSlideUp 0.6s ease both' }}>
           <div className="inline-flex items-center gap-2 mb-4 px-3 py-1.5 rounded-full border"
@@ -160,7 +160,7 @@ export default function HomePage() {
                 confidence={analysisResult.confidence}
                 description={analysisResult.description}
               />
-              <div className="glass-card rounded-2xl p-6 relative overflow-hidden"
+              <div className="glass-card rounded-2xl p-5 sm:p-6 relative overflow-hidden"
                 style={{ animation: 'fadeSlideUp 0.4s ease both' }}>
                 <div className="absolute inset-0 pointer-events-none z-0"
                   style={{ background: 'radial-gradient(circle at 10% 20%, rgba(99,102,241,0.06) 0%, transparent 60%)' }} />
@@ -174,19 +174,19 @@ export default function HomePage() {
                     Specify who you're with or what you're doing in the picture, and get customized recommendations!
                   </p>
                   
-                  <form onSubmit={handleRefineVibe} className="flex gap-2">
+                  <form onSubmit={handleRefineVibe} className="flex flex-col sm:flex-row gap-2">
                     <input
                       type="text"
                       value={customPrompt}
                       onChange={(e) => setCustomPrompt(e.target.value)}
                       placeholder="✨ E.g. 'Late night drive with friends, play some energetic Punjabi pop'"
                       disabled={isRefining}
-                      className="flex-1 px-4 py-3 rounded-xl bg-white/[0.04] border border-white/[0.07] text-white placeholder-white/20 text-sm focus:outline-none focus:border-indigo-500/40 focus:bg-white/[0.07] transition-all"
+                      className="flex-1 px-4 py-3 rounded-xl bg-white/[0.04] border border-white/[0.07] text-white placeholder-white/20 text-sm focus:outline-none focus:border-indigo-500/40 focus:bg-white/[0.07] transition-all w-full"
                     />
                     <button
                       type="submit"
                       disabled={isRefining || !customPrompt.trim()}
-                      className="px-5 py-3 rounded-xl bg-indigo-500 hover:bg-indigo-600 disabled:bg-white/[0.04] disabled:text-white/20 text-white font-bold text-sm transition-all shadow-[0_0_15px_rgba(99,102,241,0.25)] hover:shadow-[0_0_20px_rgba(99,102,241,0.45)] flex items-center gap-2 cursor-pointer disabled:cursor-not-allowed"
+                      className="w-full sm:w-auto px-5 py-3 rounded-xl bg-indigo-500 hover:bg-indigo-600 disabled:bg-white/[0.04] disabled:text-white/20 text-white font-bold text-sm transition-all shadow-[0_0_15px_rgba(99,102,241,0.25)] hover:shadow-[0_0_20px_rgba(99,102,241,0.45)] flex items-center justify-center gap-2 cursor-pointer disabled:cursor-not-allowed shrink-0"
                     >
                       {isRefining ? (
                         <div className="w-4 h-4 rounded-full border-2 border-white/20 border-t-white animate-spin" />
@@ -236,7 +236,7 @@ export default function HomePage() {
               </div>
 
               {/* Language selector */}
-              <div className="flex items-center gap-1 p-1 rounded-xl" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
+              <div className="grid grid-cols-3 sm:flex items-center gap-1 p-1 rounded-xl w-full sm:w-auto" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
                 {LANGUAGES.map(l => (
                   <button
                     key={l.key}
@@ -247,7 +247,7 @@ export default function HomePage() {
                       fetchRecommendations(currentMood, 0, l.key, activePrompt)
                     }}
                     disabled={loadingTracks}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${lang === l.key
+                    className={`px-2 sm:px-3 py-1.5 rounded-lg text-[11px] sm:text-xs font-semibold transition-all text-center ${lang === l.key
                       ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30'
                       : 'text-white/35 hover:text-white/60'
                       }`}
@@ -286,28 +286,30 @@ export default function HomePage() {
 
             {/* Pagination buttons */}
             {!loadingTracks && !tracksError && recommendations.length > 0 && (
-              <div className="flex items-center justify-between mt-8 pt-6 border-t border-white/[0.06]">
-                <button
-                  onClick={() => fetchRecommendations(currentMood, Math.max(0, offset - 9))}
-                  disabled={offset === 0}
-                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold border border-white/[0.08] text-white/50 hover:text-white hover:border-white/20 hover:bg-white/[0.04] disabled:opacity-25 disabled:cursor-not-allowed transition-all"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                  Previous 9
-                </button>
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mt-8 pt-6 border-t border-white/[0.06]">
+                <div className="flex items-center justify-between w-full sm:w-auto gap-4 order-2 sm:order-1">
+                  <button
+                    onClick={() => fetchRecommendations(currentMood, Math.max(0, offset - 9))}
+                    disabled={offset === 0}
+                    className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 sm:px-5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold border border-white/[0.08] text-white/50 hover:text-white hover:border-white/20 hover:bg-white/[0.04] disabled:opacity-25 disabled:cursor-not-allowed transition-all"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                    <span>Previous 9</span>
+                  </button>
 
-                <span className="text-white/25 text-xs">
+                  <button
+                    onClick={() => fetchRecommendations(currentMood, offset + 9)}
+                    disabled={!hasMore}
+                    className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 sm:px-5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold border border-white/[0.08] text-white/50 hover:text-white hover:border-indigo-500/40 hover:bg-indigo-500/10 disabled:opacity-25 disabled:cursor-not-allowed transition-all"
+                  >
+                    <span>Next 9</span>
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <span className="text-white/25 text-xs order-1 sm:order-2">
                   Songs {offset + 1}–{offset + recommendations.length}
                 </span>
-
-                <button
-                  onClick={() => fetchRecommendations(currentMood, offset + 9)}
-                  disabled={!hasMore}
-                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold border border-white/[0.08] text-white/50 hover:text-white hover:border-indigo-500/40 hover:bg-indigo-500/10 disabled:opacity-25 disabled:cursor-not-allowed transition-all"
-                >
-                  Next 9
-                  <ChevronRight className="w-4 h-4" />
-                </button>
               </div>
             )}
           </div>
