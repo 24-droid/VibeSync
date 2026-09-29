@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { Music, Home, Folder, History, TrendingUp, LogOut, Menu, X } from 'lucide-react'
+import { Music, Home, Folder, History, TrendingUp, Activity, LogOut, Menu, X } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 
 const navLinks = [
@@ -8,6 +8,7 @@ const navLinks = [
   { to: '/collections', icon: Folder, label: 'Collections' },
   { to: '/history', icon: History, label: 'History' },
   { to: '/trending', icon: TrendingUp, label: 'Trending' },
+  { to: '/analytics', icon: Activity, label: 'Analytics' },
 ]
 
 export default function NavigationBar() {

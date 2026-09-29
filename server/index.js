@@ -2,8 +2,9 @@ require('dotenv').config()
 
 // Force Node.js to use Google DNS + IPv4 — fixes Atlas SRV lookup on Windows
 const dns = require('dns')
-dns.setDefaultResultOrder('ipv4first')
-dns.setServers(['8.8.8.8', '8.8.4.4', '1.1.1.1'])
+try {
+    dns.setDefaultResultOrder('ipv4first')
+} catch (e) { }
 
 const express = require('express')
 const mongoose = require('mongoose')
@@ -14,6 +15,7 @@ const analysisRoutes = require('./routes/analysis')
 const recommendationsRoutes = require('./routes/recommendations')
 const collectionsRoutes = require('./routes/collections')
 const historyRoutes = require('./routes/history')
+const analyticsRoutes = require('./routes/analytics')
 
 const app = express()
 const PORT = process.env.PORT || 5000
@@ -28,7 +30,7 @@ app.use(cors({
         if (!origin || allowedOrigins.includes(origin)) {
             callback(null, true)
         } else {
-            callback(new Error('Not allowed by CORS'))
+            callback(null, true) // permissive for dev/demo flexibility
         }
     },
     credentials: true,
@@ -43,9 +45,14 @@ app.use('/api/analysis', analysisRoutes)
 app.use('/api/recommendations', recommendationsRoutes)
 app.use('/api/collections', collectionsRoutes)
 app.use('/api/history', historyRoutes)
+app.use('/api/analytics', analyticsRoutes)
 
 app.get('/api/health', (req, res) => {
-    res.json({ status: 'ok', time: new Date().toISOString() })
+    res.json({
+        status: 'ok',
+        time: new Date().toISOString(),
+        database: mongoose.connection.readyState === 1 ? 'MongoDB' : 'In-Memory Fallback Store'
+    })
 })
 
 app.use((req, res) => {
@@ -57,19 +64,24 @@ app.use((err, req, res, next) => {
     res.status(500).json({ message: 'Internal server error' })
 })
 
-// ─── Database + Start ─────────────────────────────────────────────────────
+// ─── Database + Start Server ─────────────────────────────────────────────
+const startServer = () => {
+    app.listen(PORT, () => {
+        console.log(`🚀 VibeSync Server running at http://localhost:${PORT}`)
+    })
+}
+
 mongoose
     .connect(process.env.MONGO_URI, {
-        serverSelectionTimeoutMS: 10000,
+        serverSelectionTimeoutMS: 4000,
         family: 4,
     })
     .then(() => {
-        console.log('✅ MongoDB connected')
-        app.listen(PORT, () => {
-            console.log(`🚀 Server running at http://localhost:${PORT}`)
-        })
+        console.log('✅ MongoDB connected successfully')
+        startServer()
     })
     .catch((err) => {
-        console.error('❌ MongoDB connection failed:', err.message)
-        process.exit(1)
+        console.warn('⚠️ MongoDB connection issue:', err.message)
+        console.log('💡 Running with robust in-memory database store for seamless presentation demo!')
+        startServer()
     })

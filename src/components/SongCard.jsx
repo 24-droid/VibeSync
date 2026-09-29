@@ -1,8 +1,10 @@
 import { Heart, ExternalLink, Play, Pause, Music, Plus, Loader2, Check, ChevronRight } from 'lucide-react'
 import { useState, useRef, useEffect } from 'react'
 import api from '../api/api'
+import { useAnalytics } from '../context/AnalyticsContext'
 
 export default function SongCard({ song, onRemove }) {
+  const { track } = useAnalytics()
   const [isPlaying, setIsPlaying] = useState(false)
   const [showCollections, setShowCollections] = useState(false)
   const [collections, setCollections] = useState([])
@@ -45,6 +47,7 @@ export default function SongCard({ song, onRemove }) {
     setIsSaving(collectionId)
     try {
       await api.post(`/collections/${collectionId}/songs`, { song })
+      track('song_save', 'engagement', { songTitle: song.title, artist: song.artist, songId: song.id, collectionId }, song.mood)
       // Success feedback
       setTimeout(() => {
         setIsSaving(null)
@@ -66,6 +69,7 @@ export default function SongCard({ song, onRemove }) {
       document.querySelectorAll('audio').forEach(a => a.pause())
       audioRef.current?.play()
       setIsPlaying(true)
+      track('song_play', 'engagement', { songTitle: song.title, artist: song.artist, songId: song.id }, song.mood)
     }
   }
 

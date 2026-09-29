@@ -5,8 +5,10 @@ import MoodIndicator from '../components/MoodIndicator'
 import SongCard from '../components/SongCard'
 import { Sparkles, Music, AlertCircle, ChevronLeft, ChevronRight } from 'lucide-react'
 import api from '../api/api'
+import { useAnalytics } from '../context/AnalyticsContext'
 
 export default function HomePage() {
+  const { track } = useAnalytics()
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [analysisResult, setAnalysisResult] = useState(null)
   const [error, setError] = useState(null)
@@ -61,6 +63,8 @@ export default function HomePage() {
     setActivePrompt('')
     setHasAnalyzed(false)
 
+    track('mood_input', 'mood', { type: 'image_upload', fileName: file?.name })
+
     try {
       // Step 1 — Gemini mood analysis
       const formData = new FormData()
@@ -73,11 +77,15 @@ export default function HomePage() {
       setIsAnalyzing(false)
       setHasAnalyzed(true)
 
+      track('vibe_analysis', 'mood', { mood: data.mood, confidence: data.confidence, songsCount: data.songs?.length || 0 }, data.mood)
+
       // Step 2 — recommendations for detected mood
       const { data: recData } = await api.get(`/recommendations?mood=${data.mood}&limit=9&offset=0&lang=${lang}`)
       setRecommendations(recData.tracks || [])
       setHasMore(recData.hasMore || false)
       setOffset(0)
+
+      track('recommendation_click', 'recommendation', { mood: data.mood, count: recData.tracks?.length || 0 }, data.mood)
 
       // Step 3 — Update history entry with initial recommendations
       if (data.id) {

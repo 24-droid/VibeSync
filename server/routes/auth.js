@@ -1,8 +1,13 @@
 const express = require('express')
 const router = express.Router()
 const jwt = require('jsonwebtoken')
+const mongoose = require('mongoose')
+const bcrypt = require('bcryptjs')
 const User = require('../models/User')
+const memoryStore = require('../utils/memoryStore')
 const authMiddleware = require('../middleware/auth')
+
+const isDbConnected = () => mongoose.connection && mongoose.connection.readyState === 1
 
 // Helper: generate signed JWT
 function generateToken(userId) {
@@ -20,24 +25,49 @@ router.post('/register', async (req, res) => {
             return res.status(400).json({ message: 'All fields are required' })
         }
 
-        // Check duplicates
-        const existingEmail = await User.findOne({ email: email.toLowerCase() })
-        if (existingEmail) {
-            return res.status(409).json({ message: 'An account with this email already exists' })
-        }
-        const existingUsername = await User.findOne({ username })
-        if (existingUsername) {
-            return res.status(409).json({ message: 'That username is already taken' })
-        }
+        if (isDbConnected()) {
+            const existingEmail = await User.findOne({ email: email.toLowerCase() })
+            if (existingEmail) {
+                return res.status(409).json({ message: 'An account with this email already exists' })
+            }
+            const existingUsername = await User.findOne({ username })
+            if (existingUsername) {
+                return res.status(409).json({ message: 'That username is already taken' })
+            }
 
-        const user = await User.create({ username, email, password })
-        const token = generateToken(user._id)
+            const user = await User.create({ username, email, password })
+            const token = generateToken(user._id)
 
-        res.status(201).json({
-            message: 'Account created successfully',
-            token,
-            user: user.toJSON(),
-        })
+            return res.status(201).json({
+                message: 'Account created successfully',
+                token,
+                user: user.toJSON(),
+            })
+        } else {
+            const existingEmail = await memoryStore.findUserByEmail(email)
+            if (existingEmail) {
+                return res.status(409).json({ message: 'An account with this email already exists' })
+            }
+            const existingUsername = await memoryStore.findUserByUsername(username)
+            if (existingUsername) {
+                return res.status(409).json({ message: 'That username is already taken' })
+            }
+
+            const salt = await bcrypt.genSalt(10)
+            const hashedPassword = await bcrypt.hash(password, salt)
+            const user = await memoryStore.createUser({
+                username,
+                email: email.toLowerCase(),
+                password: hashedPassword
+            })
+            const token = generateToken(user._id)
+
+            return res.status(201).json({
+                message: 'Account created successfully',
+                token,
+                user: user.toJSON(),
+            })
+        }
     } catch (err) {
         if (err.name === 'ValidationError') {
             const messages = Object.values(err.errors).map((e) => e.message)
@@ -57,23 +87,43 @@ router.post('/login', async (req, res) => {
             return res.status(400).json({ message: 'Email and password are required' })
         }
 
-        const user = await User.findOne({ email: email.toLowerCase() })
-        if (!user) {
-            return res.status(401).json({ message: 'Invalid email or password' })
+        if (isDbConnected()) {
+            const user = await User.findOne({ email: email.toLowerCase() })
+            if (!user) {
+                return res.status(401).json({ message: 'Invalid email or password' })
+            }
+
+            const isMatch = await user.comparePassword(password)
+            if (!isMatch) {
+                return res.status(401).json({ message: 'Invalid email or password' })
+            }
+
+            const token = generateToken(user._id)
+
+            return res.json({
+                message: 'Login successful',
+                token,
+                user: user.toJSON(),
+            })
+        } else {
+            const user = await memoryStore.findUserByEmail(email)
+            if (!user) {
+                return res.status(401).json({ message: 'Invalid email or password' })
+            }
+
+            const isMatch = await bcrypt.compare(password, user.password)
+            if (!isMatch) {
+                return res.status(401).json({ message: 'Invalid email or password' })
+            }
+
+            const token = generateToken(user._id)
+
+            return res.json({
+                message: 'Login successful',
+                token,
+                user: user.toJSON(),
+            })
         }
-
-        const isMatch = await user.comparePassword(password)
-        if (!isMatch) {
-            return res.status(401).json({ message: 'Invalid email or password' })
-        }
-
-        const token = generateToken(user._id)
-
-        res.json({
-            message: 'Login successful',
-            token,
-            user: user.toJSON(),
-        })
     } catch (err) {
         console.error('[login]', err)
         res.status(500).json({ message: 'Server error, please try again' })
@@ -82,7 +132,8 @@ router.post('/login', async (req, res) => {
 
 // ─── GET /api/auth/me ──────────────────────────────────────────────────────
 router.get('/me', authMiddleware, (req, res) => {
-    res.json({ user: req.user.toJSON() })
+    const userObj = typeof req.user.toJSON === 'function' ? req.user.toJSON() : req.user
+    res.json({ user: userObj })
 })
 
 module.exports = router
