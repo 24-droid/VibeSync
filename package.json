@@ -4,9 +4,9 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "start": "vite preview",
+    "dev": "node api.js && vite",
+    "build": "node api.js && vite build",
+    "start": "node api.js && vite preview",
     "preview": "vite preview"
   },
   "dependencies": {
