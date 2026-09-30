@@ -1,12 +1,16 @@
 const express = require('express')
 const router = express.Router()
 const multer = require('multer')
+const mongoose = require('mongoose')
 const { GoogleGenerativeAI } = require('@google/generative-ai')
 const authMiddleware = require('../middleware/auth')
 const Analysis = require('../models/Analysis')
+const memoryStore = require('../utils/memoryStore')
 
 const fs = require('fs')
 const path = require('path')
+
+const isDbConnected = () => mongoose.connection && mongoose.connection.readyState === 1
 
 // ── Multer: disk storage ───────────────────────────────
 const storage = multer.diskStorage({
@@ -63,7 +67,7 @@ Return ONLY a valid JSON object (no markdown, no explanation) in exactly this fo
 
         let parsed
         try {
-            const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' })
+            const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
             const result = await model.generateContent([
                 prompt,
                 {
@@ -78,7 +82,7 @@ Return ONLY a valid JSON object (no markdown, no explanation) in exactly this fo
             const jsonText = text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()
             parsed = JSON.parse(jsonText)
         } catch (err) {
-            console.warn(`[Gemini Error: ${err.message || 'Service Unavailable'}]. Falling back to Groq Llama Vision...`)
+            console.warn(`[Gemini Error: ${err.message || 'Service Unavailable'}]. Falling back to Groq Vision...`)
             if (process.env.GROQ_API_KEY) {
                 const Groq = require('groq-sdk')
                 const groqClient = new Groq({ apiKey: process.env.GROQ_API_KEY })
@@ -98,7 +102,7 @@ Return ONLY a valid JSON object (no markdown, no explanation) in exactly this fo
                             ]
                         }
                     ],
-                    model: "meta-llama/llama-4-scout-17b-16e-instruct",
+                    model: "llama-3.2-11b-vision-preview",
                     temperature: 0.2
                 })
 
@@ -111,17 +115,31 @@ Return ONLY a valid JSON object (no markdown, no explanation) in exactly this fo
         }
 
         const { mood, confidence, colors, description } = parsed
+        const userId = req.user._id || req.user.id
 
-        // Save to database for history
-        const analysis = await Analysis.create({
-            userId: req.user._id,
-            mood,
-            confidence: Math.min(1, Math.max(0, confidence)),
-            colors: colors.slice(0, 5),
-            description,
-            imageUrl: `/uploads/${req.file.filename}`,
-            songs: []
-        })
+        // Save to database/memoryStore for history
+        let analysis
+        if (isDbConnected()) {
+            analysis = await Analysis.create({
+                userId,
+                mood,
+                confidence: Math.min(1, Math.max(0, confidence || 0.9)),
+                colors: (colors || []).slice(0, 5),
+                description: description || `A ${mood} vibe`,
+                imageUrl: `/uploads/${req.file.filename}`,
+                songs: []
+            })
+        } else {
+            analysis = await memoryStore.createAnalysis({
+                userId,
+                mood,
+                confidence: Math.min(1, Math.max(0, confidence || 0.9)),
+                colors: (colors || []).slice(0, 5),
+                description: description || `A ${mood} vibe`,
+                imageUrl: `/uploads/${req.file.filename}`,
+                songs: []
+            })
+        }
 
         res.json({
             id: analysis._id,
@@ -141,13 +159,24 @@ Return ONLY a valid JSON object (no markdown, no explanation) in exactly this fo
 router.patch('/:id/songs', authMiddleware, async (req, res) => {
     try {
         const { songs } = req.body
-        const analysis = await Analysis.findOneAndUpdate(
-            { _id: req.params.id, userId: req.user._id },
-            { $set: { songs: songs || [] } },
-            { new: true }
-        )
-        if (!analysis) return res.status(404).json({ message: 'Analysis not found' })
-        res.json(analysis)
+        const userId = req.user._id || req.user.id
+
+        if (isDbConnected()) {
+            const analysis = await Analysis.findOneAndUpdate(
+                { _id: req.params.id, userId },
+                { $set: { songs: songs || [] } },
+                { new: true }
+            )
+            if (!analysis) return res.status(404).json({ message: 'Analysis not found' })
+            return res.json(analysis)
+        } else {
+            const analysis = await memoryStore.getCollectionById ? memoryStore.analyses.find(a => String(a._id) === String(req.params.id)) : null
+            if (analysis) {
+                analysis.songs = songs || []
+                return res.json(analysis)
+            }
+            return res.status(404).json({ message: 'Analysis not found' })
+        }
     } catch (err) {
         res.status(500).json({ message: 'Failed to update history songs' })
     }
@@ -158,12 +187,16 @@ router.post('/:id/refine', authMiddleware, async (req, res) => {
     try {
         const { prompt, lang } = req.body
         const analysisId = req.params.id
+        const userId = req.user._id || req.user.id
 
         if (!prompt) {
             return res.status(400).json({ message: 'Prompt is required' })
         }
 
-        const analysis = await Analysis.findOne({ _id: analysisId, userId: req.user._id })
+        let analysis = isDbConnected()
+            ? await Analysis.findOne({ _id: analysisId, userId })
+            : memoryStore.analyses.find(a => String(a._id) === String(analysisId))
+
         if (!analysis) {
             return res.status(404).json({ message: 'Analysis not found' })
         }
@@ -178,9 +211,9 @@ The user didn't like this prediction or wants to refine the recommendations usin
 Act as a world-class music curator and AI vibe-analyzer. Based on the user's prompt and original visual vibe, perform the following:
 1. Determine a refined "mood" (e.g., Romantic, Peaceful, Nostalgic, Happy, Energetic, Calm, Melancholic, Angry, etc.) matching their request.
 2. Write a customized, engaging description (1 sentence) for their refined mood (e.g. "A romantic escape inspired by your beautiful couple photo").
-3. Recommend 30 currently trending hit songs (mix of massive 2025/2026 releases, global chart-toppers, rising stars) for this refined vibe in "${lang || 'english'}" language.
+3. Recommend 30 currently trending hit songs (mix of massive releases, global chart-toppers, rising stars) for this refined vibe in "${lang || 'english'}" language.
 
-STRICT LANGUAGE ENFORCEMENT: Recommend ONLY songs in the "${lang || 'english'}" language. DO NOT mix languages. If the language is "hindi", recommend exclusively Hindi songs (no English, no pure Punjabi). If the language is "punjabi", recommend exclusively Punjabi songs. If the language is "english", recommend exclusively English songs.
+STRICT LANGUAGE ENFORCEMENT: Recommend ONLY songs in the "${lang || 'english'}" language. DO NOT mix languages. If the language is "hindi", recommend exclusively Hindi songs. If the language is "punjabi", recommend exclusively Punjabi songs. If the language is "english", recommend exclusively English songs.
 
 Return ONLY a valid JSON object (no markdown, no explanation) in exactly this format:
 {
@@ -198,13 +231,13 @@ Return ONLY a valid JSON object (no markdown, no explanation) in exactly this fo
 
         let parsed
         try {
-            const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' })
+            const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
             const result = await model.generateContent([refinementPrompt])
             const text = result.response.text().trim()
             const jsonText = text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()
             parsed = JSON.parse(jsonText)
         } catch (err) {
-            console.warn(`[Gemini Error: ${err.message || 'Service Unavailable'}]. Falling back to Groq Llama Text...`)
+            console.warn(`[Gemini Error: ${err.message || 'Service Unavailable'}]. Falling back to Groq Text...`)
             if (process.env.GROQ_API_KEY) {
                 const Groq = require('groq-sdk')
                 const groqClient = new Groq({ apiKey: process.env.GROQ_API_KEY })
@@ -228,7 +261,7 @@ Return ONLY a valid JSON object (no markdown, no explanation) in exactly this fo
         const axios = require('axios')
         const country = (lang || 'english').toLowerCase() === 'english' ? 'US' : 'IN'
 
-        const trackPromises = curatedSongs.slice(0, 30).map(async (item) => {
+        const trackPromises = (curatedSongs || []).slice(0, 30).map(async (item) => {
             try {
                 const query = item.itunesQuery || `${item.artist} ${item.title}`
                 const { data } = await axios.get('https://itunes.apple.com/search', {
@@ -283,7 +316,10 @@ Return ONLY a valid JSON object (no markdown, no explanation) in exactly this fo
             previewUrl: t.previewUrl,
             youtubeUrl: t.youtubeUrl
         }))
-        await analysis.save()
+
+        if (isDbConnected()) {
+            await analysis.save()
+        }
 
         res.json({
             id: analysis._id,
@@ -303,14 +339,17 @@ Return ONLY a valid JSON object (no markdown, no explanation) in exactly this fo
 // ── GET /api/analysis/history ──────────────────────────────────────────────
 router.get('/history', authMiddleware, async (req, res) => {
     try {
-        const history = await Analysis.find({ userId: req.user._id })
-            .sort({ createdAt: -1 })
-            .limit(20)
-        res.json(history)
+        const userId = req.user._id || req.user.id
+        if (isDbConnected()) {
+            const history = await Analysis.find({ userId }).sort({ createdAt: -1 }).limit(20)
+            return res.json(history)
+        } else {
+            const history = await memoryStore.getAnalysesByUser(userId)
+            return res.json(history)
+        }
     } catch (err) {
         res.status(500).json({ message: 'Failed to fetch history' })
     }
 })
 
 module.exports = router
-
